@@ -1,0 +1,93 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "users": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'editor')",
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'editor' || (auth.uid === $uid && ((!data.exists() && newData.child('role').val() === 'customer') || (data.exists() && newData.child('role').val() === data.child('role').val()))))"
+      }
+    },
+
+    "products": {
+      ".read": true,
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'editor'"
+    },
+
+    "categories": {
+      ".read": true,
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'editor'"
+    },
+
+    "services": {
+      ".read": true,
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'editor'"
+    },
+
+    "homepage": {
+      ".read": true,
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'editor'"
+    },
+
+    "announcements": {
+      ".read": true,
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'editor'"
+    },
+
+    "navigation": {
+      ".read": true,
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'editor'"
+    },
+
+    "settings": {
+      ".read": true,
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'editor'"
+    },
+
+    "media": {
+      ".read": true,
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'editor'"
+    },
+
+    "carts": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "orders": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'editor')",
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'editor')"
+      }
+    },
+
+    "inquiries": {
+      "$id": {
+        ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'editor' || data.child('customerId').val() === auth.uid)",
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'editor' || (!data.exists() && newData.child('customerId').val() === auth.uid))"
+      }
+    },
+
+    "userInquiries": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "messages": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'editor')",
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'editor')"
+      }
+    },
+
+    "activityLog": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'editor'",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'editor'"
+    }
+  }
+}
