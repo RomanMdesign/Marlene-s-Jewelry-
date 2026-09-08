@@ -121,7 +121,27 @@ function AuthPage({ mode = "login" }) {
         });
       }
 
-      navigate("/portal");
+      if (credential?.user) {
+        const roleSnapshot = await new Promise((resolve) => {
+          onValue(
+            ref(db, `users/${credential.user.uid}/role`),
+            (snapshot) => resolve(snapshot.val()),
+            { onlyOnce: true }
+          );
+        });
+
+        navigate(roleSnapshot === "editor" ? "/editor" : "/portal");
+      } else if (auth.currentUser) {
+        const roleSnapshot = await new Promise((resolve) => {
+          onValue(
+            ref(db, `users/${auth.currentUser.uid}/role`),
+            (snapshot) => resolve(snapshot.val()),
+            { onlyOnce: true }
+          );
+        });
+
+        navigate(roleSnapshot === "editor" ? "/editor" : "/portal");
+      }
     } catch (error) {
       setError(
         error?.message?.replace("Firebase: ", "") ||
