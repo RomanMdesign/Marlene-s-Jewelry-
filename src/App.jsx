@@ -758,7 +758,7 @@ function EditorGuard({ children }) {
     user
       ? `users/${user.uid}`
       : "__no_user__",
-    null
+    { __loading: true }
   );
 
   if (user === undefined) {
@@ -774,10 +774,11 @@ function EditorGuard({ children }) {
     );
   }
 
-  if (
-    !profile ||
-    profile.role !== "editor"
-  ) {
+  if (profile?.__loading) {
+    return <Loading />;
+  }
+
+  if (profile?.role !== "editor") {
     return (
       <Navigate
         to="/portal"
