@@ -3,7 +3,7 @@ import { getAuth } from "firebase/auth";
 import { getDatabase } from "firebase/database";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBEE_FBCfLEVgovvGbbItgtQAL18jzgzyk",
+  apiKey: "AIzaSyBH59uK674nj3Hhj0o1rfaFoYi2lBE1798",
   authDomain: "marlene-s-jewelry.firebaseapp.com",
   databaseURL: "https://marlene-s-jewelry-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "marlene-s-jewelry",
