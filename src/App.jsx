@@ -322,26 +322,24 @@ function PublicLayout() {
 
 function Home() {
   const homepage = useRTDB("homepage", {});
-  const announcements = useRTDB(
-    "announcements",
-    {}
-  );
+  const announcements = useRTDB("announcements", {});
   const products = useRTDB("products", {});
 
   const featured = Object.entries(products || {})
-    .filter(
-      ([, product]) =>
-        product?.status !== "inactive"
-    )
+    .filter(([, product]) => product?.status !== "inactive")
     .slice(0, 4);
+
+  const heroStyle = homepage.imageUrl
+    ? {
+        backgroundImage: `linear-gradient(rgba(0,0,0,.35),rgba(0,0,0,.35)), url("${homepage.imageUrl}")`,
+      }
+    : {};
 
   return (
     <div>
-      <section className="hero">
+      <section className="hero" style={heroStyle}>
         <div>
-          <p className="eyebrow">
-            MARLENE’S JEWELRY
-          </p>
+          <p className="eyebrow">MARLENE’S JEWELRY</p>
 
           <h1>
             {homepage.title ||
@@ -1205,13 +1203,170 @@ function Dashboard() {
    GENERIC CRUD
 ========================================================= */
 
+async function editorImage(file) {
+  if (!file || !file.type.startsWith("image/")) {
+    throw new Error("Please select an image.");
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onerror = () =>
+      reject(new Error("Could not read image."));
+
+    reader.onload = () => {
+      const image = new Image();
+
+      image.onerror = () =>
+        reject(new Error("Could not process image."));
+
+      image.onload = () => {
+        const max = 1200;
+        const scale = Math.min(
+          1,
+          max / Math.max(image.width, image.height)
+        );
+
+        const canvas = document.createElement("canvas");
+
+        canvas.width = Math.max(
+          1,
+          Math.round(image.width * scale)
+        );
+
+        canvas.height = Math.max(
+          1,
+          Math.round(image.height * scale)
+        );
+
+        const ctx = canvas.getContext("2d");
+
+        ctx.drawImage(
+          image,
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        );
+
+        const result = canvas.toDataURL(
+          "image/jpeg",
+          0.75
+        );
+
+        if (result.length > 1800000) {
+          reject(
+            new Error(
+              "Image is too large. Please choose a smaller picture."
+            )
+          );
+          return;
+        }
+
+        resolve(result);
+      };
+
+      image.src = reader.result;
+    };
+
+    reader.readAsDataURL(file);
+  });
+}
+
+function ImageEditorField({
+  value,
+  onChange,
+  media = {},
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function upload(event) {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    setBusy(true);
+    setError("");
+
+    try {
+      const data = await editorImage(file);
+      onChange(data);
+    } catch (err) {
+      setError(err?.message || "Image upload failed.");
+    } finally {
+      setBusy(false);
+      event.target.value = "";
+    }
+  }
+
+  return (
+    <div className="image-editor">
+      <input
+        type="file"
+        accept="image/*"
+        onChange={upload}
+        disabled={busy}
+      />
+
+      {busy && <small>Processing image…</small>}
+
+      {error && <div className="error">{error}</div>}
+
+      {value && (
+        <img
+          src={value}
+          alt="Preview"
+          className="media-img"
+        />
+      )}
+
+      {Object.entries(media || {}).length > 0 && (
+        <label>
+          Choose from Media Library
+
+          <select
+            value=""
+            onChange={(e) => {
+              if (e.target.value) {
+                onChange(e.target.value);
+              }
+            }}
+          >
+            <option value="">
+              Select existing image…
+            </option>
+
+            {Object.entries(media || {}).map(
+              ([id, item]) => (
+                <option
+                  key={id}
+                  value={item.url || item.imageUrl || ""}
+                >
+                  {item.name || id}
+                </option>
+              )
+            )}
+          </select>
+        </label>
+      )}
+
+      <input
+        placeholder="Or paste image URL"
+        value={value || ""}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </div>
+  );
+}
+
 const fields = {
   products: [
     ["name", "Name"],
     ["description", "Description", "textarea"],
     ["price", "Price"],
     ["categoryName", "Category"],
-    ["imageUrl", "Image URL"],
+    ["imageUrl", "Product Picture", "image"],
     ["stock", "Stock"],
     ["status", "Status"],
   ],
@@ -1219,7 +1374,7 @@ const fields = {
   categories: [
     ["name", "Name"],
     ["description", "Description", "textarea"],
-    ["imageUrl", "Image URL"],
+    ["imageUrl", "Category Picture", "image"],
     ["status", "Status"],
   ],
 
@@ -1228,7 +1383,7 @@ const fields = {
     ["description", "Description", "textarea"],
     ["price", "Price"],
     ["duration", "Duration"],
-    ["imageUrl", "Image URL"],
+    ["imageUrl", "Service Picture", "image"],
     ["status", "Status"],
   ],
 
@@ -1248,80 +1403,129 @@ const fields = {
 
 function Crud({ type, title }) {
   const data = useRTDB(type, {});
+  const media = useRTDB("media", {});
+  const categories = useRTDB("categories", {});
 
   const empty = Object.fromEntries(
-    fields[type].map(
-      ([key, , kind]) => [
-        key,
-        kind === "checkbox"
-          ? true
-          : "",
-      ]
-    )
+    fields[type].map(([key, , kind]) => [
+      key,
+      kind === "checkbox" ? true : "",
+    ])
   );
 
-  const [form, setForm] =
-    useState(empty);
-
-  const [editing, setEditing] =
-    useState(null);
+  const [form, setForm] = useState(empty);
+  const [editing, setEditing] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
   function startEditing(id, item) {
     setEditing(id);
-
     setForm({
       ...empty,
       ...item,
     });
+    setError("");
+  }
+
+  function resetForm() {
+    setEditing(null);
+    setForm(empty);
+    setError("");
   }
 
   async function save(event) {
     event.preventDefault();
+    setBusy(true);
+    setError("");
 
-    const id =
-      editing ||
-      push(ref(db, type)).key;
+    try {
+      const id =
+        editing ||
+        push(ref(db, type)).key;
 
-    const clean = {
-      ...form,
-      createdAt:
-        form.createdAt || now(),
-      updatedAt: now(),
-    };
+      const clean = {
+        ...form,
+        createdAt:
+          form.createdAt || now(),
+        updatedAt: now(),
+      };
 
-    for (const key of [
-      "price",
-      "stock",
-      "order",
-    ]) {
-      if (
-        clean[key] !== "" &&
-        clean[key] !== null &&
-        clean[key] !== undefined
-      ) {
-        clean[key] = Number(
-          clean[key]
+      for (const key of [
+        "price",
+        "stock",
+        "order",
+      ]) {
+        if (
+          clean[key] !== "" &&
+          clean[key] !== null &&
+          clean[key] !== undefined
+        ) {
+          clean[key] = Number(clean[key]);
+        }
+      }
+
+      await dbSet(`${type}/${id}`, clean);
+
+      const editorUid = auth.currentUser?.uid;
+
+      if (editorUid) {
+        const logId = push(
+          ref(db, "activityLog")
+        ).key;
+
+        await dbSet(
+          `activityLog/${logId}`,
+          {
+            action: editing
+              ? "Updated"
+              : "Created",
+            target: `${type}/${id}`,
+            editorUid,
+            createdAt: now(),
+          }
         );
       }
+
+      resetForm();
+    } catch (err) {
+      setError(
+        err?.message ||
+          "Could not save this item."
+      );
+    } finally {
+      setBusy(false);
     }
-
-    await dbSet(
-      `${type}/${id}`,
-      clean
-    );
-
-    setEditing(null);
-    setForm(empty);
   }
 
   async function deleteItem(id) {
-    if (
-      window.confirm(
-        "Delete this item?"
-      )
-    ) {
-      await dbRemove(
-        `${type}/${id}`
+    if (!window.confirm("Delete this item?")) {
+      return;
+    }
+
+    try {
+      await dbRemove(`${type}/${id}`);
+
+      const editorUid = auth.currentUser?.uid;
+
+      if (editorUid) {
+        const logId = push(
+          ref(db, "activityLog")
+        ).key;
+
+        await dbSet(
+          `activityLog/${logId}`,
+          {
+            action: "Deleted",
+            target: `${type}/${id}`,
+            editorUid,
+            createdAt: now(),
+          }
+        );
+      }
+    } catch (err) {
+      setError(
+        err?.message ||
+          "Could not delete this item."
       );
     }
   }
@@ -1331,6 +1535,12 @@ function Crud({ type, title }) {
       <div className="section-head">
         <h1>{title}</h1>
       </div>
+
+      {error && (
+        <div className="error">
+          {error}
+        </div>
+      )}
 
       <form
         className="editor-form"
@@ -1343,9 +1553,7 @@ function Crud({ type, title }) {
 
               {kind === "textarea" ? (
                 <textarea
-                  value={
-                    form[key] ?? ""
-                  }
+                  value={form[key] ?? ""}
                   onChange={(e) =>
                     setForm({
                       ...form,
@@ -1354,8 +1562,7 @@ function Crud({ type, title }) {
                     })
                   }
                 />
-              ) : kind ===
-                "checkbox" ? (
+              ) : kind === "checkbox" ? (
                 <input
                   type="checkbox"
                   checked={!!form[key]}
@@ -1367,11 +1574,82 @@ function Crud({ type, title }) {
                     })
                   }
                 />
+              ) : kind === "image" ? (
+                <ImageEditorField
+                  value={form[key] || ""}
+                  media={media}
+                  onChange={(value) =>
+                    setForm({
+                      ...form,
+                      [key]: value,
+                    })
+                  }
+                />
+              ) : key === "categoryName" ? (
+                <>
+                  <select
+                    value={form[key] || ""}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        [key]:
+                          e.target.value,
+                      })
+                    }
+                  >
+                    <option value="">
+                      Select category…
+                    </option>
+
+                    {Object.values(
+                      categories || {}
+                    ).map((category) => (
+                      <option
+                        key={
+                          category.name
+                        }
+                        value={
+                          category.name
+                        }
+                      >
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <input
+                    placeholder="Or type category"
+                    value={form[key] || ""}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        [key]:
+                          e.target.value,
+                      })
+                    }
+                  />
+                </>
+              ) : key === "status" ? (
+                <select
+                  value={form[key] || "active"}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      [key]:
+                        e.target.value,
+                    })
+                  }
+                >
+                  <option value="active">
+                    Active / Published
+                  </option>
+                  <option value="inactive">
+                    Inactive / Hidden
+                  </option>
+                </select>
               ) : (
                 <input
-                  value={
-                    form[key] ?? ""
-                  }
+                  value={form[key] ?? ""}
                   onChange={(e) =>
                     setForm({
                       ...form,
@@ -1385,9 +1663,14 @@ function Crud({ type, title }) {
           )
         )}
 
-        <div>
-          <button className="btn primary">
-            {editing
+        <div className="button-row">
+          <button
+            className="btn primary"
+            disabled={busy}
+          >
+            {busy
+              ? "Saving…"
+              : editing
               ? "Update"
               : "Add"}
           </button>
@@ -1396,10 +1679,7 @@ function Crud({ type, title }) {
             <button
               type="button"
               className="btn"
-              onClick={() => {
-                setEditing(null);
-                setForm(empty);
-              }}
+              onClick={resetForm}
             >
               Cancel
             </button>
@@ -1415,10 +1695,25 @@ function Crud({ type, title }) {
               key={id}
             >
               <div>
+                {item.imageUrl && (
+                  <img
+                    src={item.imageUrl}
+                    alt=""
+                    style={{
+                      width: 64,
+                      height: 64,
+                      objectFit: "cover",
+                      borderRadius: 10,
+                      marginRight: 12,
+                    }}
+                  />
+                )}
+
                 <b>
                   {item.name ||
                     item.title ||
-                    item.label}
+                    item.label ||
+                    "Untitled"}
                 </b>
 
                 <small>
@@ -1429,7 +1724,7 @@ function Crud({ type, title }) {
                 </small>
               </div>
 
-              <div>
+              <div className="button-row">
                 <button
                   className="btn small"
                   onClick={() =>
@@ -1464,18 +1759,16 @@ function Crud({ type, title }) {
 ========================================================= */
 
 function HomeEditor() {
-  const current = useRTDB(
-    "homepage",
-    {}
-  );
+  const current = useRTDB("homepage", {});
+  const media = useRTDB("media", {});
 
-  const [form, setForm] =
-    useState({
-      title: "",
-      subtitle: "",
-      buttonText: "",
-      buttonPath: "/shop",
-    });
+  const [form, setForm] = useState({
+    title: "",
+    subtitle: "",
+    buttonText: "",
+    buttonPath: "/shop",
+    imageUrl: "",
+  });
 
   useEffect(() => {
     setForm((old) => ({
@@ -1487,6 +1780,7 @@ function HomeEditor() {
     current.subtitle,
     current.buttonText,
     current.buttonPath,
+    current.imageUrl,
   ]);
 
   async function save() {
@@ -1552,6 +1846,20 @@ function HomeEditor() {
               ...form,
               buttonPath:
                 e.target.value,
+            })
+          }
+        />
+      </label>
+
+      <label>
+        Homepage Picture
+        <ImageEditorField
+          value={form.imageUrl || ""}
+          media={media}
+          onChange={(value) =>
+            setForm({
+              ...form,
+              imageUrl: value,
             })
           }
         />
@@ -1929,111 +2237,177 @@ function MessagesAdmin() {
 ========================================================= */
 
 function Media() {
-  const media = useRTDB(
-    "media",
-    {}
-  );
+  const media = useRTDB("media", {});
 
-  const [name, setName] =
-    useState("");
-
-  const [url, setUrl] =
-    useState("");
+  const [name, setName] = useState("");
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
   async function save(event) {
     event.preventDefault();
 
-    const id = push(
-      ref(db, "media")
-    ).key;
+    setBusy(true);
+    setError("");
 
-    await dbSet(
-      `media/${id}`,
-      {
-        name,
-        url,
-        createdAt: now(),
-      }
-    );
+    try {
+      const id = push(
+        ref(db, "media")
+      ).key;
 
-    setName("");
-    setUrl("");
+      await dbSet(
+        `media/${id}`,
+        {
+          name:
+            name ||
+            `Image ${new Date().toLocaleString()}`,
+          url,
+          createdAt: now(),
+        }
+      );
+
+      setName("");
+      setUrl("");
+    } catch (err) {
+      setError(
+        err?.message ||
+          "Could not save image."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function upload(event) {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    setBusy(true);
+    setError("");
+
+    try {
+      const imageUrl =
+        await editorImage(file);
+
+      const id = push(
+        ref(db, "media")
+      ).key;
+
+      await dbSet(
+        `media/${id}`,
+        {
+          name:
+            file.name ||
+            "Uploaded image",
+          url: imageUrl,
+          createdAt: now(),
+        }
+      );
+    } catch (err) {
+      setError(
+        err?.message ||
+          "Could not upload image."
+      );
+    } finally {
+      setBusy(false);
+      event.target.value = "";
+    }
   }
 
   return (
     <section className="section">
-      <h1>Media</h1>
+      <h1>Media Library</h1>
 
       <p>
-        Paste image URLs here. The
-        URL is stored in Firebase.
+        Upload pictures here and use them
+        throughout the website.
       </p>
+
+      {error && (
+        <div className="error">
+          {error}
+        </div>
+      )}
+
+      <div className="card pad">
+        <h3>Upload picture</h3>
+
+        <input
+          type="file"
+          accept="image/*"
+          onChange={upload}
+          disabled={busy}
+        />
+
+        {busy && (
+          <p>Processing image…</p>
+        )}
+      </div>
 
       <form
         className="editor-form"
         onSubmit={save}
       >
         <label>
-          Name
-
+          Image name
           <input
             value={name}
             onChange={(e) =>
-              setName(
-                e.target.value
-              )
+              setName(e.target.value)
             }
-            required
+            placeholder="Example: Gold Necklace"
           />
         </label>
 
         <label>
           Image URL
-
           <input
             value={url}
             onChange={(e) =>
-              setUrl(
-                e.target.value
-              )
+              setUrl(e.target.value)
             }
+            placeholder="https://..."
             required
           />
         </label>
 
-        <button className="btn primary">
-          Add media
+        <button
+          className="btn primary"
+          disabled={busy}
+        >
+          Add image URL
         </button>
       </form>
 
       <div className="grid">
-        {Object.entries(
-          media || {}
-        ).map(([id, item]) => (
-          <div
-            className="card pad"
-            key={id}
-          >
-            <img
-              src={item.url}
-              alt={item.name}
-              className="media-img"
-            />
-
-            <b>{item.name}</b>
-
-            <button
-              className="btn small danger"
-              onClick={() =>
-                dbRemove(
-                  `media/${id}`
-                )
-              }
+        {Object.entries(media || {}).map(
+          ([id, item]) => (
+            <div
+              className="card pad"
+              key={id}
             >
-              Delete
-            </button>
-          </div>
-        ))}
+              <img
+                src={item.url}
+                alt={item.name}
+                className="media-img"
+              />
+
+              <b>{item.name}</b>
+
+              <button
+                className="btn small danger"
+                onClick={() =>
+                  dbRemove(
+                    `media/${id}`
+                  )
+                }
+              >
+                Delete
+              </button>
+            </div>
+          )
+        )}
       </div>
     </section>
   );
@@ -2087,20 +2461,44 @@ function Activity() {
 ========================================================= */
 
 function WebsiteEditor() {
+  const modules = [
+    ["Products", "/editor/products"],
+    ["Categories", "/editor/categories"],
+    ["Services", "/editor/services"],
+    ["Home Page", "/editor/home"],
+    ["Media Library", "/editor/media"],
+    ["Navigation", "/editor/navigation"],
+    ["Announcements", "/editor/announcements"],
+    ["Website Settings", "/editor/settings"],
+  ];
+
   return (
     <section className="section">
       <h1>Website Editor</h1>
 
       <p>
-        Use the editor modules to
-        manage live Firebase content.
+        Manage the live Marlene’s Jewelry
+        website from Firebase.
       </p>
+
+      <div className="portal-cards">
+        {modules.map(([label, path]) => (
+          <Link
+            key={path}
+            to={path}
+          >
+            {label}
+          </Link>
+        ))}
+      </div>
+
+      <br />
 
       <Link
         className="btn primary"
         to="/"
       >
-        Preview website
+        Preview Website
       </Link>
     </section>
   );
