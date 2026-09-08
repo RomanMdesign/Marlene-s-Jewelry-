@@ -113,7 +113,7 @@ function AuthPage({ mode = "login" }) {
           });
         }
 
-        await dbSet(`users/${credential.user.uid}`, {
+        await dbSet(`users/${auth.currentUser.uid}`, {
           role: "customer",
           name: name.trim(),
           email: email.trim(),
@@ -121,10 +121,10 @@ function AuthPage({ mode = "login" }) {
         });
       }
 
-      if (credential?.user) {
+      if (auth.currentUser) {
         const roleSnapshot = await new Promise((resolve) => {
           onValue(
-            ref(db, `users/${credential.user.uid}/role`),
+            ref(db, `users/${auth.currentUser.uid}/role`),
             (snapshot) => resolve(snapshot.val()),
             { onlyOnce: true }
           );
